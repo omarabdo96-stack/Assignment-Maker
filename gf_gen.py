@@ -100,18 +100,22 @@ def build_page(action, title, questions, name_entry, id_entry, fbzx):
     for i, q in enumerate(questions, 1):
         img_html = ('<img class="qimg" loading="lazy" src="%s" alt="Question %d">' % (html.escape(q["img"]), i)) if q.get("img") else ""
         label = q.get("label") or "Question %d" % i
+        # Put image INSIDE qtext with the label
+        qtext_content = html.escape(label) + img_html
         if q.get("options"):
+            # Reverse options for RTL to show a,b,c,d left-to-right
+            reversed_opts = list(reversed(q["options"]))
             opts = "".join(
                 '<div class="opt" data-q="%s" data-v="%s"><span class="dot"></span>%s</div>'
-                % (q["entry"], html.escape(o), html.escape(o)) for o in q["options"])
-            body = img_html + '<div class="opts">%s</div>' % opts
+                % (q["entry"], html.escape(o), html.escape(o)) for o in reversed_opts)
+            body = '<div class="opts">%s</div>' % opts
         else:
-            body = img_html + '<input class="tanswer" type="text" data-q="%s" placeholder="اكتب إجابتك هنا...">' % q["entry"]
+            body = '<input class="tanswer" type="text" data-q="%s" placeholder="اكتب إجابتك هنا...">' % q["entry"]
         cards.append('''
   <div class="qcard glass" id="q%d">
     <div class="qhead"><div class="qnum">%d</div><div class="qtext">%s</div></div>
     %s
-  </div>''' % (i, i, html.escape(label), body))
+  </div>''' % (i, i, qtext_content, body))
     qjson = json.dumps([{"entry": q["entry"]} for q in questions], ensure_ascii=False)
     return (tpl.replace("__TITLE__", html.escape(title))
                .replace("__NQ__", str(len(questions)))
