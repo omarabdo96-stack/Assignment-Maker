@@ -40,12 +40,8 @@ def deep_extract_page_items(s):
             opts = []
             if kind in (2, 3):
                 opts = [o[0] for o in inner[1]]
-            pos = m.start()
-            imgs_before = re.findall(r'<img src="(https://docs\.google\.com/forms-images-rt/[^"]+)"', s[:pos])
-            imgs_after = re.findall(r'<img src="(https://docs\.google\.com/forms-images-rt/[^"]+)"', s[pos:pos+6000])
-            img = imgs_before[-1] if imgs_before else (imgs_after[0] if imgs_after else None)
             label = data[1] if isinstance(data[1], str) else None
-            items.append({"entry": entry, "options": opts, "img": img, "label": label, "kind": kind})
+            items.append({"entry": entry, "options": opts, "label": label, "kind": kind})
         except Exception:
             continue
     seen, out = set(), []
@@ -98,24 +94,19 @@ def build_page(action, title, questions, name_entry, id_entry, fbzx):
         tpl = f.read()
     cards = []
     for i, q in enumerate(questions, 1):
-        img_html = ('<img class="qimg" loading="lazy" src="%s" alt="Question %d">' % (html.escape(q["img"]), i)) if q.get("img") else ""
         label = q.get("label") or "Question %d" % i
-        # Put image INSIDE qtext with the label
-        qtext_content = html.escape(label) + img_html
         if q.get("options"):
-            # Reverse options for RTL to show a,b,c,d left-to-right
-            reversed_opts = list(reversed(q["options"]))
             opts = "".join(
                 '<div class="opt" data-q="%s" data-v="%s"><span class="dot"></span>%s</div>'
-                % (q["entry"], html.escape(o), html.escape(o)) for o in reversed_opts)
+                % (q["entry"], html.escape(o), html.escape(o)) for o in q["options"])
             body = '<div class="opts">%s</div>' % opts
         else:
-            body = '<input class="tanswer" type="text" data-q="%s" placeholder="اكتب إجابتك هنا...">' % q["entry"]
+            body = '<input class="tanswer" type="text" data-q="%s" placeholder="Type your answer here...">' % q["entry"]
         cards.append('''
   <div class="qcard glass" id="q%d">
-    <div class="qhead"><div class="qnum">%d</div><div class="qtext">%s</div></div>
+    <div class="qhead"><div class="qnum">Question %d</div><div class="qtext">%s</div></div>
     %s
-  </div>''' % (i, i, qtext_content, body))
+  </div>''' % (i, i, html.escape(label), body))
     qjson = json.dumps([{"entry": q["entry"]} for q in questions], ensure_ascii=False)
     return (tpl.replace("__TITLE__", html.escape(title))
                .replace("__NQ__", str(len(questions)))
