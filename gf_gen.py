@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Google Form -> Luxurious HTML page generator.
+"""Google Form -> Luxurious HTML page generator with auto answer extraction.
 Usage: python3 gf_gen.py <form_url> [output.html]
 Requires the questions page to be reachable; walks multi-page forms via POST round-trip.
 """
@@ -62,12 +62,22 @@ def extract_from_fb_data(s):
 
             entry = "entry.%d" % qid
             opts = []
+            correct_answer = None
 
             # Type 2 = multiple choice, type 3 = dropdown
             if kind in (2, 3) and len(q) > 4 and isinstance(q[4], list) and q[4]:
                 # Options are in q[4][0][1]
                 if len(q[4][0]) > 1 and isinstance(q[4][0][1], list):
                     opts = [opt[0] for opt in q[4][0][1] if isinstance(opt, list) and opt]
+
+                # Try to find correct answer - it's usually marked in q[4]
+                if len(q[4]) > 1 and isinstance(q[4][1], list):
+                    # q[4][1] might contain answer key info
+                    answer_info = q[4][1]
+                    if isinstance(answer_info, list) and len(answer_info) > 0:
+                        # First element might be the correct answer index
+                        if isinstance(answer_info[0], int) and answer_info[0] < len(opts):
+                            correct_answer = opts[answer_info[0]]
 
             # Clean up label (remove HTML tags)
             if label:
@@ -77,7 +87,13 @@ def extract_from_fb_data(s):
             if not label or label == "":
                 label = f"Question {question_counter}"
 
-            items.append({"entry": entry, "options": opts, "label": label, "kind": kind})
+            items.append({
+                "entry": entry,
+                "options": opts,
+                "label": label,
+                "kind": kind,
+                "correct_answer": correct_answer
+            })
             question_counter += 1
 
     except Exception as e:
@@ -123,8 +139,12 @@ def build_page(action, title, questions, name_entry, id_entry, fbzx):
                 '<div class="opt" data-q="%s" data-v="%s"><span class="dot"></span>%s</div>'
                 % (q["entry"], html.escape(o), html.escape(o)) for o in q["options"])
             body = '<div class="opts">%s</div>' % opts
-            # Set first option as default correct answer (you should change this manually)
-            if q["options"]:
+
+            # Use extracted correct answer if available
+            if q.get("correct_answer"):
+                correct_answers[q["entry"]] = q["correct_answer"]
+            elif q["options"]:
+                # Fallback to first option
                 correct_answers[q["entry"]] = q["options"][0]
         else:
             body = '<input class="tanswer" type="text" data-q="%s" placeholder="Type your answer here...">' % q["entry"]
@@ -147,7 +167,8 @@ def build_page(action, title, questions, name_entry, id_entry, fbzx):
                .replace("__ACTION__", html.escape(action))
                .replace("__FBZX__", html.escape(fbzx))
                .replace("__NAME_ENTRY__", name_entry)
-               .replace("__ID_ENTRY__", id_entry))
+               .replace("__ID_ENTRY__", id_entry)
+               .replace("__FORM_URL__", html.escape(action.replace('/formResponse', '/viewform'))))
 
 def main():
     url = sys.argv[1]
@@ -158,11 +179,21 @@ def main():
     print("Title:", title)
     print("Questions:", len(qs))
     print("Name:", name_entry, " ID:", id_entry)
+
+    # Count how many answers were auto-extracted
+    auto_answers = sum(1 for q in qs if q.get("correct_answer"))
+    print(f"Auto-extracted answers: {auto_answers}/{len(qs)}")
+
     page = build_page(action, title, qs, name_entry, id_entry, fbzx)
     with open(out, "w", encoding="utf-8") as f:
         f.write(page)
     print("Saved:", os.path.abspath(out))
-    print("\n⚠️  IMPORTANT: Edit the generated HTML file and update CORRECT_ANSWERS with the actual correct answers!")
+
+    if auto_answers < len(qs):
+        print(f"\n⚠️  IMPORTANT: {len(qs) - auto_answers} answers were NOT auto-extracted.")
+        print("Edit the generated HTML file and update CORRECT_ANSWERS for those questions!")
+    else:
+        print("\n✅ All answers were auto-extracted! But please verify they are correct.")
 
 if __name__ == "__main__":
     main()
